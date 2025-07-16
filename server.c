@@ -11,21 +11,21 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <dirent.h>
+#include "requests.h"
+#include "file_operations.h"
 
 #define BACKLOG_SIZE 10
 
-void parse_request(int client_fd);
-void read_file(const char *filename, int client_fd);
 
 int main(int argc, char *argv[]) {
-    //check if dummy directory exists 
+    //check if www directory exists 
     
-    DIR *dir = opendir("dummy");
+    DIR *dir = opendir("www");
     if (dir) {
 
         closedir(dir);
     } else if (ENOENT == errno) {
-        fprintf(stderr, "Directory 'dummy' does not exist. Please create it.\n");
+        fprintf(stderr, "Directory 'www' does not exist. Please create it.\n");
         return 1;
     } 
 
@@ -45,7 +45,10 @@ int main(int argc, char *argv[]) {
     hints.ai_family = AF_INET; // IPv4
     hints.ai_socktype = SOCK_STREAM; // TCP
 
-    getaddrinfo(NULL, argv[1], &hints, &res);
+    if (getaddrinfo(NULL, argv[1], &hints, &res) != 0) {
+        perror("getaddrinfo");
+        return 1;
+    }
 
     sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
@@ -56,9 +59,14 @@ int main(int argc, char *argv[]) {
         return 1;
     } 
 
-    bind(sockfd, res->ai_addr, res->ai_addrlen);
+    if (bind(sockfd, res->ai_addr, res->ai_addrlen) == -1) {
+        perror("bind \n");
+        close(sockfd);
+        freeaddrinfo(res);
+        return 1;
+    }
 
-    listen(sockfd, BACKLOG_SIZE);
+   //listen(sockfd, BACKLOG_SIZE);
 
     if(listen(sockfd, BACKLOG_SIZE) == -1) {
         perror("listen \n");
@@ -83,9 +91,7 @@ int main(int argc, char *argv[]) {
         inet_ntop(their_addr.sin_family, &their_addr.sin_addr, 
                   (char *)&their_addr.sin_port, sizeof(their_addr.sin_port));
         
-        parse_request(new_fd);
-
-        
+        parse_get_request(new_fd);
 
         close(new_fd);  
     }
@@ -93,47 +99,4 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-void parse_request(int client_fd) {
-    
-    char buffer[1024];
-    char *token;
-    int bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
 
-    if (strstr(buffer, "GET") && strstr(buffer, "HTTP/1.0")) {
-        token = strtok(buffer, " "); // "GET"
-        token = strtok(NULL, " ");   // path
-        char filepath[256];
-        if (token != NULL) {
-            if (strcmp(token, "/") == 0) {
-                snprintf(filepath, sizeof(filepath), "dummy/index.html");
-                read_file(filepath, client_fd);
-            } else if (token[0] == '/') {
-                snprintf(filepath, sizeof(filepath), "dummy/%s", token + 1); // skip leading '/'
-                read_file(filepath, client_fd);
-            } else {
-                send(client_fd, "HTTP/1.0 400 Bad Request\r\n\r\n", 30, 0);
-            }
-            printf("Handled GET request successfully.\n");
-        } else {
-            send(client_fd, "HTTP/1.0 400 Bad Request\r\n\r\n", 30, 0);
-        }
-    } else {
-        send(client_fd, "HTTP/1.0 400 Bad Request\r\n\r\n", 30, 0);
-    }
-    
-}
-
-void read_file(const char *filename, int client_fd) {
-    FILE *file = fopen(filename, "r");
-    if (file) {
-        send(client_fd, "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n", 45, 0);
-        char buffer[1024];
-        size_t bytes_read;
-        while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-            send(client_fd, buffer, bytes_read, 0);
-        }
-        fclose(file);
-    } else {
-        send(client_fd, "HTTP/1.0 404 Not Found\r\n\r\n", 26, 0);
-    }
-}
