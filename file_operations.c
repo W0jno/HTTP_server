@@ -51,3 +51,12 @@ void read_file(const char *filename, int client_fd) {
         }
     }
 }
+
+void write_file(const char *filename, const char *content, int client_fd) {
+    FILE *file = fopen(filename, "a");
+    if(file){
+        fprintf(file, "%s\n", content);
+        fclose(file);
+        
+    }
+}

@@ -91,12 +91,10 @@ int main(int argc, char *argv[]) {
         inet_ntop(their_addr.sin_family, &their_addr.sin_addr, 
                   (char *)&their_addr.sin_port, sizeof(their_addr.sin_port));
         
-        parse_get_request(new_fd);
+        parse_request(new_fd);
 
         close(new_fd);  
     }
     freeaddrinfo(res);
     return 0;
 }
-
-
